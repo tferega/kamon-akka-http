@@ -20,10 +20,8 @@ import akka.http.scaladsl.model.HttpRequest
 import akka.http.scaladsl.model.headers.Host
 import kamon.Kamon
 import kamon.akka.http.metrics.AkkaHttpServerMetrics
-import org.slf4j.LoggerFactory
 
-object AkkaHttpExtension {
-  private val logger = LoggerFactory.getLogger(this.getClass)
+object AkkaHttpExtension extends Logging {
   logger.info("Starting the Kamon(Akka-Http) extension")
 
   val settings = AkkaHttpExtensionSettings(Kamon.config)
