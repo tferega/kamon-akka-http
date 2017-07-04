@@ -1,6 +1,6 @@
 /*
  * =========================================================================================
- * Copyright © 2013-2016 the kamon project <http://kamon.io/>
+ * Copyright © 2013-2017 the kamon project <http://kamon.io/>
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file
  * except in compliance with the License. You may obtain a copy of the License at
@@ -20,49 +20,44 @@ import akka.http.scaladsl.model.HttpRequest
 import akka.http.scaladsl.model.headers.Host
 import kamon.Kamon
 import kamon.akka.http.metrics.AkkaHttpServerMetrics
-import kamon.metric.Entity
-import kamon.util.logger.LazyLogger
+import org.slf4j.LoggerFactory
 
 object AkkaHttpExtension {
-  val log = LazyLogger("kamon.akka.http.AkkaHttpExtension")
-  log.info("Starting the Kamon(Akka-Http) extension")
+  private val logger = LoggerFactory.getLogger(this.getClass)
+  logger.info("Starting the Kamon(Akka-Http) extension")
 
   val settings = AkkaHttpExtensionSettings(Kamon.config)
-  val SegmentLibraryName = "akka-http-client"
+  val ChildLibraryName = "akka-http-client"
+  val metrics: AkkaHttpServerMetrics = AkkaHttpServerMetrics.forHttpServer("akka-http-server")
 
-  val metrics = {
-    val entity = Entity("akka-http-server", AkkaHttpServerMetrics.category)
-    Kamon.metrics.entity(AkkaHttpServerMetrics, entity)
-  }
+  def generateSpanName(request: HttpRequest): String =
+    settings.nameGenerator.generateSpanName(request)
 
-  def generateTraceName(request: HttpRequest): String =
-    settings.nameGenerator.generateTraceName(request)
+  def generateRequestLevelApiChildName(request: HttpRequest): String =
+    settings.nameGenerator.generateRequestLevelApiChildName(request)
 
-  def generateRequestLevelApiSegmentName(request: HttpRequest): String =
-    settings.nameGenerator.generateRequestLevelApiSegmentName(request)
-
-  def generateHostLevelApiSegmentName(request: HttpRequest): String =
-    settings.nameGenerator.generateHostLevelApiSegmentName(request)
+  def generateHostLevelApiChildName(request: HttpRequest): String =
+    settings.nameGenerator.generateHostLevelApiChildName(request)
 }
 
 trait NameGenerator {
-  def generateTraceName(request: HttpRequest): String
-  def generateRequestLevelApiSegmentName(request: HttpRequest): String
-  def generateHostLevelApiSegmentName(request: HttpRequest): String
+  def generateSpanName(request: HttpRequest): String
+  def generateRequestLevelApiChildName(request: HttpRequest): String
+  def generateHostLevelApiChildName(request: HttpRequest): String
 }
 
 class DefaultNameGenerator extends NameGenerator {
 
-  def generateRequestLevelApiSegmentName(request: HttpRequest): String = {
+  def generateRequestLevelApiChildName(request: HttpRequest): String = {
     val uriAddress = request.uri.authority.host.address
     if (uriAddress.equals("")) hostFromHeaders(request).getOrElse("unknown-host") else uriAddress
   }
 
-  def generateHostLevelApiSegmentName(request: HttpRequest): String =
+  def generateHostLevelApiChildName(request: HttpRequest): String =
     hostFromHeaders(request).getOrElse("unknown-host")
 
-  def generateTraceName(request: HttpRequest): String =
-    "UnnamedTrace"
+  def generateSpanName(request: HttpRequest): String =
+    "UnnamedSpan"
 
   private def hostFromHeaders(request: HttpRequest): Option[String] =
     request.header[Host].map(_.host.toString())

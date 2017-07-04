@@ -1,6 +1,6 @@
 /*
  * =========================================================================================
- * Copyright © 2013-2016 the kamon project <http://kamon.io/>
+ * Copyright © 2013-2017 the kamon project <http://kamon.io/>
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file
  * except in compliance with the License. You may obtain a copy of the License at
@@ -14,47 +14,50 @@
  * =========================================================================================
  */
 
-package kamon.akka.http.instrumentation
+package kamon.akka.http
+package instrumentation
 
-import akka.http.scaladsl.model.headers.RawHeader
-import akka.http.scaladsl.model.{ HttpHeader, HttpMessage, HttpRequest, HttpResponse }
-import kamon.akka.http.{ AkkaHttpExtension, ClientInstrumentationLevel }
-import kamon.trace._
-import kamon.util.SameThreadExecutionContext
+import akka.http.scaladsl.model._
+import io.opentracing.{NoopSpan, Span}
+import kamon.Kamon
+import kamon.akka.http.utils.{HeaderContext, SameThreadExecutionContext}
 import org.aspectj.lang.ProceedingJoinPoint
 import org.aspectj.lang.annotation._
 
 import scala.concurrent.Future
-import scala.util._
+
+object ClientRequestInstrumentation {
+  private implicit val ec = SameThreadExecutionContext
+}
 
 @Aspect
 class ClientRequestInstrumentation {
+  import ClientRequestInstrumentation._
 
   @Around("execution(* akka.http.scaladsl.HttpExt.singleRequest(..)) && args(request, *, *, *, *)")
   def onSingleRequest(pjp: ProceedingJoinPoint, request: HttpRequest): Any = {
-    Tracer.currentContext.collect { ctx ⇒
-      val segment =
-        if (AkkaHttpExtension.settings.clientInstrumentationLevel == ClientInstrumentationLevel.RequestLevelAPI) {
-          val segmentName = AkkaHttpExtension.generateRequestLevelApiSegmentName(request)
-          ctx.startSegment(segmentName, SegmentCategory.HttpClient, AkkaHttpExtension.SegmentLibraryName)
-        } else EmptyTraceContext.EmptySegment
+    val child: Span =
+      if (AkkaHttpExtension.settings.clientInstrumentationLevel == ClientInstrumentationLevel.RequestLevelAPI) {
+        val childName = AkkaHttpExtension.generateRequestLevelApiChildName(request)
+        Kamon.buildSpan(childName)
+          .withTag("category", "http-client")
+          .withTag("library-name", AkkaHttpExtension.ChildLibraryName)
+          .startManual
+      } else NoopSpan.INSTANCE
 
-      val responseFuture = pjp.proceed().asInstanceOf[Future[HttpResponse]]
-      responseFuture.onComplete {
-        case Success(_) ⇒ segment.finish()
-        case Failure(t) ⇒ segment.finishWithError(t)
-      }(SameThreadExecutionContext)
-      responseFuture
-    } getOrElse pjp.proceed()
+    val responseFuture = pjp.proceed.asInstanceOf[Future[HttpResponse]]
+    responseFuture.onComplete { result =>
+      child.setTag("error", result.isFailure)
+      child.finish()
+    }
+    responseFuture
   }
 
   @Around("execution(* akka.http.scaladsl.model.HttpMessage.withDefaultHeaders(*)) && this(request) && args(defaultHeaders)")
   def onWithDefaultHeaders(pjp: ProceedingJoinPoint, request: HttpMessage, defaultHeaders: List[HttpHeader]): Any = {
-    val modifiedHeaders = Tracer.currentContext.collect { ctx ⇒
-      if (AkkaHttpExtension.settings.includeTraceTokenHeader) RawHeader(AkkaHttpExtension.settings.traceTokenHeaderName, ctx.token) :: defaultHeaders
-      else defaultHeaders
+    val modifiedHeaders = Kamon.fromActiveSpan { span =>
+      HeaderContext.injectClientHeaders(span.context, defaultHeaders)
     } getOrElse defaultHeaders
-
     pjp.proceed(Array[AnyRef](request, modifiedHeaders))
   }
 }

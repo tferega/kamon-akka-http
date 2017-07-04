@@ -14,26 +14,37 @@
  * =========================================================================================
  */
 
-package kamon.akka.http.metrics
+package kamon.akka.http
+package metrics
 
-import akka.http.scaladsl.model.HttpResponse
-import kamon.metric.instrument.InstrumentFactory
-import kamon.metric.EntityRecorderFactoryCompanion
-import kamon.util.http.HttpServerMetrics
+import kamon.Kamon
+import kamon.metric._
 
-class AkkaHttpServerMetrics(instrumentFactory: InstrumentFactory) extends HttpServerMetrics(instrumentFactory) {
-  val requestActive = minMaxCounter("request-active")
-  val connectionOpen = minMaxCounter("connection-open")
+object AkkaHttpServerMetrics {
+  /**
+    *
+    * Metrics for Akka-Http Server:
+    *
+    *    - active-requests: Number of active requests
+    *    - open-connections: Number of open connections
+    */
+  private val activeRequestsMetric = Kamon.minMaxCounter("akka-http-server.requests-active")
+  private val openConnectionsMetric = Kamon.minMaxCounter("akka-http-server.connections-open")
 
-  def recordRequest() = requestActive.increment()
-
-  def recordResponse(response: HttpResponse, traceName: String): Unit = {
-    requestActive.decrement()
-    super.recordResponse(traceName, response.status.intValue.toString)
+  def forHttpServer(path: String): AkkaHttpServerMetrics = {
+    val tags = Map("path" -> path)
+    AkkaHttpServerMetrics(
+      tags,
+      activeRequestsMetric.refine(tags),
+      openConnectionsMetric.refine(tags)
+    )
   }
-
-  def recordConnectionOpened(): Unit = connectionOpen.increment()
-  def recordConnectionClosed(): Unit = connectionOpen.decrement()
 }
 
-object AkkaHttpServerMetrics extends EntityRecorderFactoryCompanion[AkkaHttpServerMetrics]("http-server", new AkkaHttpServerMetrics(_))
+case class AkkaHttpServerMetrics(tags: Map[String, String], activeRequests: MinMaxCounter, openConnections: MinMaxCounter) {
+  import AkkaHttpServerMetrics._
+  def cleanup(): Unit = {
+    activeRequestsMetric.remove(tags)
+    openConnectionsMetric.remove(tags)
+  }
+}

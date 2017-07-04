@@ -1,6 +1,6 @@
 /*
  * =========================================================================================
- * Copyright © 2013-2016 the kamon project <http://kamon.io/>
+ * Copyright © 2013-2017 the kamon project <http://kamon.io/>
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file
  * except in compliance with the License. You may obtain a copy of the License at
@@ -18,12 +18,12 @@ package kamon.akka.http
 
 import akka.http.scaladsl.server.Directive0
 import akka.http.scaladsl.server.directives.BasicDirectives
-import kamon.trace.Tracer
+import kamon.Kamon
 
 trait KamonTraceDirectives extends BasicDirectives {
   def traceName(name: String, tags: Map[String, String] = Map.empty): Directive0 = mapRequest { req ⇒
-    tags.foreach { case (key, value) ⇒ Tracer.currentContext.addTag(key, value) }
-    Tracer.currentContext.rename(name)
+    tags.foreach { case (key, value) ⇒ Kamon.activeSpan.setTag(key, value) }
+    Kamon.activeSpan.setOperationName(name)
     req
   }
 }

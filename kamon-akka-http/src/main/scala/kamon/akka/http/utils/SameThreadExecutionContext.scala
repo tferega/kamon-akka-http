@@ -14,15 +14,19 @@
  * =========================================================================================
  */
 
-package playground
+package kamon.akka.http
+package utils
 
-import akka.http.scaladsl.model.HttpRequest
-import kamon.akka.http.NameGenerator
+import org.slf4j.LoggerFactory
 
-class AkkaHttpNameGenerator extends NameGenerator {
-  private def requestLabel(request: HttpRequest): String = s"${request.method.value}:${request.uri.path}"
+import scala.concurrent.ExecutionContext
 
-  def generateSpanName(request: HttpRequest): String = requestLabel(request)
-  def generateRequestLevelApiChildName(request: HttpRequest): String = s"[RL]${requestLabel(request)}"
-  def generateHostLevelApiChildName(request: HttpRequest): String = s"[HL]${requestLabel(request)}"
+/**
+  * For small code blocks that don't need to be run on a separate thread.
+  */
+object SameThreadExecutionContext extends ExecutionContext {
+  private val logger = LoggerFactory.getLogger(this.getClass)
+
+  override def execute(runnable: Runnable): Unit = runnable.run()
+  override def reportFailure(t: Throwable): Unit = logger.error(t.getMessage, t)
 }
